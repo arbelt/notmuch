@@ -62,6 +62,7 @@
 (defcustom notmuch-search-result-format
   `(("date" . "%12s ")
     ("count" . "%-7s ")
+    ("flags" . "%-7s ")
     ("authors" . "%-20s ")
     ("subject" . "%s ")
     ("tags" . "(%s)"))
@@ -78,6 +79,27 @@ enter a line break when setting this variable with setq, use \\n.
 To enter a line break in customize, press \\[quoted-insert] C-j."
   :type '(alist :key-type (string) :value-type (string))
   :group 'notmuch-search)
+
+(defcustom notmuch-search-display-flags
+  `(("flagged" . "⚑")
+    ("attachment" . "⚓")
+    ("sent" . "✈")
+    ("unread" . "✱")
+    ("inbox" . "✉")
+    ("replied" . "❮"))
+  "Tags to use as flags in search display"
+  :type '(alist :key-type (string) :value-type (string))
+  :group 'notmuch-search)
+
+(defcustom notmuch-search-tags-display
+  `()
+  "Characters to show in place of tags"
+  :type '(alist :key-type (string) :value-type (string))
+  :group 'notmuch-search)
+
+(defun notmuch--translate-tag (tag)
+  (let ((tagchar (cdr (assoc tag notmuch-search-tags-display))))
+    (or tagchar tag)))
 
 (defvar notmuch-query-history nil
   "Variable to store minibuffer history for notmuch queries")
@@ -375,6 +397,19 @@ For a mouse binding, return nil."
   :group 'notmuch-search
   :group 'notmuch-faces)
 
+(defface notmuch-flag-face
+  '((((class color)
+      (background dark))
+     (:foreground "OliveDrab1"))
+    (((class color)
+      (background light))
+     (:foreground "navy blue" :bold t))
+    (t
+     (:bold t)))
+  "Face used in search mode for flags."
+  :group 'notmuch-search
+  :group 'notmuch-faces)
+
 (defun notmuch-search-mode ()
   "Major mode displaying results of a notmuch search.
 
@@ -616,6 +651,7 @@ of the result."
 	(init-point (point))
 	(inhibit-read-only t))
     ;; Delete the current thread
+    (mapc 'delete-overlay (overlays-in start end))
     (delete-region start end)
     ;; Insert the updated thread
     (notmuch-search-show-result result start)
@@ -695,7 +731,9 @@ foreground and blue background."
 	  (let ((tag (car elem))
 		(attributes (cdr elem)))
 	    (when (member tag line-tag-list)
-	      (notmuch-combine-face-text-property start end attributes))))
+	      (let ((ovl (make-overlay start end nil t)))
+		(overlay-put ovl 'face attributes)))))
+	      ;; (notmuch-combine-face-text-property start end attributes))))
 	;; Reverse the list so earlier entries take precedence
 	(reverse notmuch-search-line-faces)))
 
@@ -796,10 +834,24 @@ non-authors is found, assume that all of the authors match."
    ((string-equal field "authors")
     (notmuch-search-insert-authors format-string (plist-get result :authors)))
 
+   ((string-equal field "flags")
+    (let ((flgs (delete-if 'null
+		 (mapcar (lambda (x) (assoc x notmuch-search-display-flags))
+			 (plist-get result :tags)))))
+      (insert (propertize (format format-string (mapconcat 'cdr flgs ""))
+			  'face 'notmuch-flag-face))
+      ))
    ((string-equal field "tags")
-    (let ((tags-str (mapconcat 'identity (plist-get result :tags) " ")))
+    (let ((tags-str (mapconcat 'notmuch--translate-tag
+			       (remove-if (lambda (x) (assoc x notmuch-search-display-flags))
+					  (plist-get result :tags)) " "))
+	  (beg (point)))
       (insert (propertize (format format-string tags-str)
-			  'face 'notmuch-tag-face))))))
+			  'face 'notmuch-tag-face))
+      (let ((ovl (make-overlay beg (point))))
+	(overlay-put ovl 'face 'notmuch-tag-face)
+	(overlay-put ovl 'priority 5))
+      ))))
 
 (defun notmuch-search-show-result (result &optional pos)
   "Insert RESULT at POS or the end of the buffer if POS is null."

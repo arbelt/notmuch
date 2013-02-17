@@ -138,6 +138,10 @@ indentation."
 (make-variable-buffer-local 'notmuch-show-parent-buffer)
 (put 'notmuch-show-parent-buffer 'permanent-local t)
 
+(defvar notmuch-show-parent-result nil)
+(make-variable-buffer-local 'notmuch-show-parent-result)
+(put 'notmuch-show-parent-result 'permanent-local t)
+
 (defvar notmuch-show-query-context nil)
 (make-variable-buffer-local 'notmuch-show-query-context)
 (put 'notmuch-show-query-context 'permanent-local t)
@@ -1127,10 +1131,27 @@ function is used."
 
     (setq notmuch-show-thread-id thread-id
 	  notmuch-show-parent-buffer parent-buffer
-	  notmuch-show-query-context query-context)
+	  notmuch-show-query-context query-context
+	  notmuch-show-parent-result (with-current-buffer parent-buffer
+				       (cons (point)
+				       (notmuch-search-get-result))))
     (notmuch-show-build-buffer)
     (notmuch-show-goto-first-wanted-message)
     (current-buffer)))
+
+(defun notmuch-show-refresh-parent ()
+  (let* ((parent-pos (car notmuch-show-parent-result))
+	 (result (cdr notmuch-show-parent-result))
+	 (newtags nil))
+    (when (buffer-live-p notmuch-show-parent-buffer)
+      (notmuch-show-mapc
+       (lambda ()
+	 (setq newtags (union newtags (notmuch-show-get-tags)))))
+      (plist-put result :tags (sort (delete-duplicates newtags :test 'string=) 'string<))
+      (with-current-buffer notmuch-show-parent-buffer
+	(save-excursion
+	  (goto-char parent-pos)
+	  (notmuch-search-update-result result))))))
 
 (defun notmuch-show-build-buffer ()
   (let ((inhibit-read-only t))
@@ -1164,7 +1185,10 @@ function is used."
       ;; Set the header line to the subject of the first message.
       (setq header-line-format (notmuch-show-strip-re (notmuch-show-get-subject)))
 
-      (run-hooks 'notmuch-show-hook))))
+      (run-hooks 'notmuch-show-hook)))
+  (make-local-variable 'kill-buffer-hook)
+  (add-hook 'kill-buffer-hook 'notmuch-show-refresh-parent)
+  )
 
 (defun notmuch-show-capture-state ()
   "Capture the state of the current buffer.
