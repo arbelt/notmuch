@@ -61,9 +61,12 @@ line."
 		  ((eq num-options 1)
 		   (car options))
 		  (t
+		   (if helm-mode
+		       (helm-comp-read (format "Address (%s matches): " num-options)
+				       options :input-history 'notmuch-address-history)
 		   (completing-read (format "Address (%s matches): " num-options)
 				    (cdr options) nil nil (car options)
-				    'notmuch-address-history)))))
+				    'notmuch-address-history))))))
     (if chosen
 	(progn
 	  (push chosen notmuch-address-history)
