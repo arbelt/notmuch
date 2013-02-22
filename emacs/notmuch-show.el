@@ -1131,27 +1131,30 @@ function is used."
 
     (setq notmuch-show-thread-id thread-id
 	  notmuch-show-parent-buffer parent-buffer
-	  notmuch-show-query-context query-context
-	  notmuch-show-parent-result (with-current-buffer parent-buffer
-				       (cons (point)
-				       (notmuch-search-get-result))))
+	  notmuch-show-query-context query-context)
+
+    (when parent-buffer
+      (setq notmuch-show-parent-result (with-current-buffer parent-buffer
+					 (cons (point)
+					       (notmuch-search-get-result)))))
     (notmuch-show-build-buffer)
     (notmuch-show-goto-first-wanted-message)
     (current-buffer)))
 
 (defun notmuch-show-refresh-parent ()
-  (let* ((parent-pos (car notmuch-show-parent-result))
-	 (result (cdr notmuch-show-parent-result))
-	 (newtags nil))
-    (when (buffer-live-p notmuch-show-parent-buffer)
-      (notmuch-show-mapc
-       (lambda ()
-	 (setq newtags (union newtags (notmuch-show-get-tags)))))
-      (plist-put result :tags (sort (delete-duplicates newtags :test 'string=) 'string<))
-      (with-current-buffer notmuch-show-parent-buffer
-	(save-excursion
-	  (goto-char parent-pos)
-	  (notmuch-search-update-result result))))))
+  (when notmuch-show-parent-result
+    (let* ((parent-pos (car notmuch-show-parent-result))
+	   (result (cdr notmuch-show-parent-result))
+	   (newtags nil))
+      (when (buffer-live-p notmuch-show-parent-buffer)
+	(notmuch-show-mapc
+	 (lambda ()
+	   (setq newtags (union newtags (notmuch-show-get-tags)))))
+	(plist-put result :tags (sort (delete-duplicates newtags :test 'string=) 'string<))
+	(with-current-buffer notmuch-show-parent-buffer
+	  (save-excursion
+	    (goto-char parent-pos)
+	    (notmuch-search-update-result result)))))))
 
 (defun notmuch-show-build-buffer ()
   (let ((inhibit-read-only t))
